@@ -1,0 +1,50 @@
+# HerbVision .gitignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.swp
+*.bak
+*.tmp
+*.log
+.env
+venv/
+
+# Flask
+instance/
+*.db
+
+# Node
+node_modules/
+
+# React/Vite
+frontend/dist/
+frontend/.env
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+*.sqlite
+*.sqlite3
+*.db
+
+# Uploaded images
+backend/static/uploaded_images/
+
+# Build
+build/
+
+# Other
+*.~
+*.lock
+
+# Ignore model files (optional, comment out if you want to track them)
+backend/*.pth
+backend/*.pt

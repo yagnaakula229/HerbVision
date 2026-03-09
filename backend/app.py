@@ -15,14 +15,30 @@ app.secret_key = 'admin'
 CORS(app)
 
 # Database connection
-mydb = mysql.connector.connect(
-    host="localhost",
-    user="root",
-    password="",
-    port="3306",
-    database='medical_plant'
-)
-mycursor = mydb.cursor()
+import sqlite3
+import os
+
+# Create database file if it doesn't exist
+db_path = 'users.db'
+if not os.path.exists(db_path):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            address TEXT,
+            mobile_number TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+def get_db_connection():
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 # Device configuration
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -98,9 +114,15 @@ model.load_state_dict(torch.load('best_model_rnn.pth'))
 model = model.to(device)
 model.eval()
 
-# Load class names
-dataset_root = 'Medicinal plant dataset'
-class_names = sorted([d.name for d in os.scandir(dataset_root) if d.is_dir()])
+# Load class names (hardcoded for development)
+class_names = [
+    'Wood_sorel', 'Brahmi', 'Basale', 'Lemon_grass', 'Lemon', 'Insulin', 'Amruta_Balli',
+    'Betel', 'Castor', 'Ashoka', 'Aloevera', 'Tulasi', 'Henna', 'Curry_Leaf', 'Arali',
+    'Hibiscus', 'Betel_Nut', 'Neem', 'Jasmine', 'Nithyapushpa', 'Mint', 'Nooni',
+    'Pomegranate', 'Pepper', 'Geranium', 'Mango', 'Honge', 'Amla', 'Ekka', 'Raktachandini',
+    'Rose', 'Ashwagandha', 'Gauva', 'Ganike', 'Avocado', 'Sapota', 'Doddapatre',
+    'Nagadali', 'Pappaya', 'Bamboo'
+]
 
 
 
@@ -278,18 +300,24 @@ def api_register():
         if len(mobile_number) != 10 or not mobile_number.isdigit():
             return jsonify({'error': 'Mobile number must be exactly 10 digits!'}), 400
 
-        query = "SELECT email FROM users WHERE email = %s"
-        mycursor.execute(query, (email,))
-        email_data = mycursor.fetchone()
+        query = "SELECT email FROM users WHERE email = ?"
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(query, (email,))
+        email_data = cursor.fetchone()
+        conn.close()
 
         if email_data:
             return jsonify({'error': 'This email ID already exists!'}), 400
 
         hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
 
-        query = "INSERT INTO users (email, password, address, mobile_number) VALUES (%s, %s, %s, %s)"
-        mycursor.execute(query, (email, hashed_password, address, mobile_number))
-        mydb.commit()
+        query = "INSERT INTO users (email, password, address, mobile_number) VALUES (?, ?, ?, ?)"
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(query, (email, hashed_password, address, mobile_number))
+        conn.commit()
+        conn.close()
 
         return jsonify({'message': 'Successfully Registered!'}), 201
     except mysql.connector.Error as err:
@@ -304,9 +332,12 @@ def api_login():
         if not email or not password:
             return jsonify({'error': 'Email and password are required!'}), 400
         
-        query = "SELECT email, password FROM users WHERE email = %s"
-        mycursor.execute(query, (email,))
-        user = mycursor.fetchone()
+        query = "SELECT email, password FROM users WHERE email = ?"
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(query, (email,))
+        user = cursor.fetchone()
+        conn.close()
         
         if user and check_password_hash(user[1], password):
             session['user_email'] = email
@@ -345,7 +376,12 @@ def api_upload():
         if file_ext not in ['jpg', 'png', 'jpeg', 'jfif']:
             return jsonify({'error': 'Only image formats are accepted'}), 400
         
-        mypath = os.path.join('static/uploaded_images', fn)
+        # Create upload directory if it doesn't exist
+        upload_dir = 'static/uploaded_images'
+        if not os.path.exists(upload_dir):
+            os.makedirs(upload_dir)
+        
+        mypath = os.path.join(upload_dir, fn)
         myfile.save(mypath)
         
         relevance = predict_relevance(mypath)
