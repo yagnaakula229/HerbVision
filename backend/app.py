@@ -72,45 +72,25 @@ class MobileNetModel(nn.Module):
 # Load the relevant/irrelevant model
 irrelevant_model_path = 'mobilenet_irrelevent.pt'
 irrelevant_model = MobileNetModel(num_classes=2)
-irrelevant_model.load_state_dict(torch.load(irrelevant_model_path))
+irrelevant_model.load_state_dict(torch.load(irrelevant_model_path, map_location=device))
 irrelevant_model = irrelevant_model.to(device)
 irrelevant_model.eval()
-# Define the MobileNetRNN class for 40 class classification
-class RNNClassifier(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim, num_layers=1):
-        super(RNNClassifier, self).__init__()
-        self.rnn = nn.RNN(input_dim, hidden_dim, num_layers, batch_first=True)
-        self.fc = nn.Linear(hidden_dim, output_dim)
-    
-    def forward(self, x):
-        rnn_out, _ = self.rnn(x)
-        out = self.fc(rnn_out[:, -1, :])
-        return F.log_softmax(out, dim=1)
-
-class MobileNetRNN(nn.Module):
+# Define the DenseNetModel class for 40 class classification
+class DenseNetModel(nn.Module):
     def __init__(self, num_classes):
-        super(MobileNetRNN, self).__init__()
-        self.mobilenet = models.mobilenet_v2(pretrained=True)
-        self.mobilenet.classifier = nn.Identity()
-        
-        self.feature_dim = 1280
-        self.rnn_input_dim = 1280
-        self.rnn_hidden_dim = 512
-        self.rnn_output_dim = num_classes
-        
-        self.rnn = RNNClassifier(self.rnn_input_dim, self.rnn_hidden_dim, self.rnn_output_dim)
-    
+        super(DenseNetModel, self).__init__()
+        self.densenet = models.densenet121(pretrained=True)
+        num_features = self.densenet.classifier.in_features
+        self.densenet.classifier = nn.Linear(num_features, num_classes)
+
     def forward(self, x):
-        features = self.mobilenet(x)
-        features = features.view(features.size(0), -1)
-        features = features.unsqueeze(1)
-        
-        output = self.rnn(features)
-        return output
+        return F.log_softmax(self.densenet(x), dim=1)
+
 # Load the model
 num_classes = 40  # Adjust according to your number of classes
-model = MobileNetRNN(num_classes=num_classes)
-model.load_state_dict(torch.load('best_model_rnn.pth'))
+model = DenseNetModel(num_classes=num_classes)
+checkpoint = torch.load('densenet121_pso_medicinal_plants.pth', map_location=device)
+model.densenet.load_state_dict(checkpoint['model_state_dict'])
 model = model.to(device)
 model.eval()
 
