@@ -1,147 +1,75 @@
 # HerbVision
 
-A comprehensive web application for medicinal plant identification using AI and machine learning.
+A complete Medicinal Plant Detection web application with a React frontend, Flask backend, and TensorFlow/Keras model inference.
 
-## Overview
+## Project Structure
 
-HerbVision combines a powerful Flask backend with a modern React frontend to provide users with an intuitive interface for identifying medicinal plants through image upload. The system uses advanced deep learning models to classify plants and provide detailed information about their traditional medicinal uses.
+- `backend/` - Flask API, SQLite database, Keras model loader, user authentication, prediction history
+- `frontend/` - React + Vite app with login, register, upload, and dashboard pages
 
-## Architecture
+## Backend Files
 
-### Backend (Flask)
-- **Location**: `backend/`
-- **Technology**: Python Flask with PyTorch
-- **Features**:
-  - User authentication and session management
-  - Image upload and processing
-  - Two-stage AI classification (relevance check + species identification)
-  - MySQL database integration
-  - RESTful API endpoints
+- `backend/app.py` - Flask application with `/register`, `/login`, `/predict`, and `/predictions`
+- `backend/models.py` - SQLAlchemy models for `User` and `Prediction`
+- `backend/plant_tips.py` - Medicinal plant names and tips map
+- `backend/requirements.txt` - Python dependencies for backend services
 
-### Frontend (React)
-- **Location**: `frontend/`
-- **Technology**: React 18 with Vite
-- **Features**:
-  - Modern, responsive user interface
-  - Client-side routing
-  - Real-time API integration
-  - Image upload with preview
-  - User authentication flows
+## Frontend Files
 
-## Quick Start
+- `frontend/package.json` - React and Vite dependencies
+- `frontend/vite.config.js` - Vite configuration
+- `frontend/index.html` - Application HTML entrypoint
+- `frontend/src/main.jsx` - React entrypoint
+- `frontend/src/App.jsx` - Routing and protected route logic
+- `frontend/src/api.js` - Axios API client with JWT headers
+- `frontend/src/components/Navbar.jsx` - Navigation and logout
+- `frontend/src/components/ImageUpload.jsx` - Image upload, preview, and submit
+- `frontend/src/components/ResultCard.jsx` - Prediction result display
+- `frontend/src/pages/Login.jsx` - Login page
+- `frontend/src/pages/Register.jsx` - Register page
+- `frontend/src/pages/Dashboard.jsx` - Dashboard with prediction UI and history
+- `frontend/src/styles.css` - Styling for the app
 
-### Prerequisites
-- Python 3.8+
-- Node.js 16+
-- MySQL database
+## Setup
 
-### Backend Setup
-
-1. Navigate to backend directory:
-   ```bash
-   cd backend
-   ```
-
-2. Install Python dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. Set up MySQL database:
-   - Create database: `medical_plant`
-   - Update database credentials in `app.py`
-
-4. Start the Flask server:
-   ```bash
-   python app.py
-   ```
-
-### Frontend Setup
-
-1. Navigate to frontend directory:
-   ```bash
-   cd frontend
-   ```
-
-2. Install Node dependencies:
-   ```bash
-   npm install
-   ```
-
-3. Start the React development server:
-   ```bash
-   npm run dev
-   ```
-
-4. Open your browser to `http://localhost:5173`
-
-### Running Both Services
-
-You can run both backend and frontend simultaneously using the provided script:
+### Backend
 
 ```bash
-./run.sh
+cd backend
+python -m pip install -r requirements.txt
+python app.py
 ```
 
-This will start:
-- Flask backend on `http://localhost:5000`
-- React frontend on `http://localhost:5173`
+The Flask backend listens on `http://127.0.0.1:5000`.
 
-## API Documentation
+### Frontend
 
-### Authentication Endpoints
-- `POST /api/register` - Register new user
-- `POST /api/login` - User login
-- `POST /api/logout` - User logout
-- `GET /api/check-auth` - Check authentication status
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-### Classification Endpoints
-- `POST /api/upload` - Upload and classify plant image
-- `GET /upload/<filename>` - Serve uploaded images
+Open `http://localhost:5173` in your browser.
 
-## AI Models
+## API Endpoints
 
-The system uses two PyTorch models:
-1. **Relevance Classifier**: Determines if an image contains a medicinal plant
-2. **Species Classifier**: Identifies specific plant species (40+ supported plants)
+- `POST /register` - Register a new user
+- `POST /login` - Login and receive a JWT
+- `POST /predict` - Upload an image for medicinal plant prediction
+- `GET /predictions` - Fetch user prediction history
 
-## Supported Plants
+## Application Features
 
-The database includes detailed information for plants such as:
-- Wood Sorrel, Brahmi, Basale, Lemon Grass
-- Insulin Plant, Amruta Balli, Aloe Vera
-- Tulasi, Neem, and many more...
+- React frontend using hooks and functional components
+- JWT authentication with protected dashboard route
+- Image upload with preview and server-side prediction
+- Results display with plant name, confidence progress bar, and tips
+- Prediction history saved per user
+- Logout support
 
-## Development
+## Notes
 
-### Backend Development
-- Located in `backend/` directory
-- Uses Flask for API development
-- PyTorch for machine learning inference
-- MySQL for user data storage
-
-### Frontend Development
-- Located in `frontend/` directory
-- React with modern hooks and functional components
-- React Router for navigation
-- Vite for fast development and building
-
-## Deployment
-
-For production deployment:
-1. Build the React frontend: `npm run build` (in frontend directory)
-2. Configure Flask to serve static React files
-3. Set up production database and environment variables
-4. Deploy to your preferred hosting platform
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Test both backend and frontend
-5. Submit a pull request
-
-## License
-
-This project is open source and available under the MIT License.
+- The backend creates a Keras model file at `backend/plant_model.h5` when first run.
+- User data and prediction history are stored in `backend/app.db`.
+- The Flask backend accepts JWT tokens in the `Authorization: Bearer <token>` header.

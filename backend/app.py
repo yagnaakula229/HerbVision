@@ -1,240 +1,232 @@
-from flask import Flask, request, jsonify, session
-from flask_cors import CORS
-from flask_session import Session
+import datetime
+import json
 import os
-import time
-import logging
-from werkzeug.utils import secure_filename
-from utils import load_models, preprocess_image, predict_irrelevant, predict_plant, cleanup_file
+from functools import wraps
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+import bcrypt
+import jwt
+import numpy as np
+from flask import Flask, jsonify, request
+from flask_cors import CORS
+from PIL import Image
+from tensorflow.keras import Input, Model
+from tensorflow.keras.layers import Dense, GlobalAveragePooling2D
+from tensorflow.keras.models import load_model
+from tensorflow.keras.preprocessing.image import img_to_array
 
-# Flask app setup
+from models import Prediction, User, db
+from plant_tips import PLANT_CLASSES, PLANT_TIPS
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "app.db")
+MODEL_PATH = os.path.join(BASE_DIR, "plant_model.h5")
+JWT_SECRET = os.environ.get("JWT_SECRET", "super-secret-key")
+JWT_ALGORITHM = "HS256"
+TOKEN_EXPIRE_HOURS = 24
+
 app = Flask(__name__)
-CORS(app, supports_credentials=True)  # Enable CORS for frontend communication
-app.secret_key = 'herbvision_secret_key_2024'  # Change this in production
+app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DB_PATH}"
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-# Configure session
-app.config['SESSION_TYPE'] = 'filesystem'
-Session(app)
+# Enhanced CORS configuration
+CORS(app, resources={
+    r"/*": {
+        "origins": "*",
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"],
+        "supports_credentials": False
+    }
+})
 
-# Configuration
-app.config['UPLOAD_FOLDER'] = 'uploads/'
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
-ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'bmp'}
+db.init_app(app)
+model = None
 
-# Simple in-memory user storage (use database in production)
-users = {}
 
-def allowed_file(filename):
-    """Check if file extension is allowed"""
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+def build_model():
+    inputs = Input(shape=(128, 128, 3))
+    x = GlobalAveragePooling2D()(inputs)
+    outputs = Dense(len(PLANT_CLASSES), activation="softmax")(x)
+    compiled = Model(inputs, outputs)
+    compiled.compile(optimizer="adam", loss="categorical_crossentropy")
+    return compiled
 
-@app.route('/', methods=['GET'])
-def health_check():
-    """Health check endpoint"""
-    return jsonify({
-        'status': 'healthy',
-        'message': 'HerbVision API is running',
-        'timestamp': time.time()
-    })
 
-@app.route('/api/register', methods=['POST'])
+def load_or_create_model():
+    global model
+    if os.path.exists(MODEL_PATH):
+        model = load_model(MODEL_PATH)
+        return
+    model = build_model()
+    model.save(MODEL_PATH)
+
+
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
+
+
+def create_token(user_id: int) -> str:
+    payload = {
+        "sub": user_id,
+        "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=TOKEN_EXPIRE_HOURS),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def get_token_data(token: str):
+    return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+
+
+def token_required(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            return jsonify({"error": "Authorization token missing"}), 401
+        token = auth_header.split(" ", 1)[1]
+        try:
+            data = get_token_data(token)
+            user = User.query.get(data["sub"])
+        except jwt.ExpiredSignatureError:
+            return jsonify({"error": "Token has expired"}), 401
+        except Exception:
+            return jsonify({"error": "Invalid token"}), 401
+        if not user:
+            return jsonify({"error": "User not found"}), 401
+        return f(user, *args, **kwargs)
+
+    return wrapper
+
+
+def preprocess_image(file_stream):
+    image = Image.open(file_stream).convert("RGB")
+    image = image.resize((128, 128))
+    array = img_to_array(image) / 255.0
+    return np.expand_dims(array, axis=0)
+
+
+@app.route("/health", methods=["GET", "OPTIONS"])
+def health():
+    print(f"[HEALTH] Request from {request.remote_addr}")
+    return jsonify({"status": "ok"}), 200
+
+
+@app.before_request
+def log_request():
+    print(f"[REQUEST] {request.method} {request.path} from {request.remote_addr}")
+
+
+@app.route("/register", methods=["POST", "OPTIONS"])
 def register():
-    """User registration endpoint"""
+    if request.method == "OPTIONS":
+        return {}, 200
+    
+    print(f"[REGISTER] Request from {request.remote_addr}")
     try:
-        data = request.form
-        email = data.get('email', '').strip()
-        password = data.get('password', '')
-        confirm_password = data.get('confirm_password', '')
-        address = data.get('address', '').strip()
-        mobile_number = data.get('mobile_number', '').strip()
+        data = request.get_json(force=True)
+        username = data.get("username", "").strip()
+        password = data.get("password", "")
+        if not username or not password:
+            return jsonify({"error": "Username and password are required."}), 400
+        if User.query.filter_by(username=username).first():
+            return jsonify({"error": "Username already exists."}), 409
+        new_user = User(username=username, password_hash=hash_password(password))
+        db.session.add(new_user)
+        db.session.commit()
+        token = create_token(new_user.id)
+        print(f"[REGISTER] User {username} registered successfully")
+        return jsonify({"token": token, "username": username}), 201
+    except Exception as exc:
+        print(f"[REGISTER ERROR] {str(exc)}")
+        app.logger.error(f"Register error: {str(exc)}")
+        return jsonify({"error": "Registration failed"}), 500
 
-        # Validation
-        if not email or not password or not confirm_password:
-            return jsonify({'error': 'Email and password are required'}), 400
 
-        if password != confirm_password:
-            return jsonify({'error': 'Passwords do not match'}), 400
-
-        if email in users:
-            return jsonify({'error': 'Email already registered'}), 400
-
-        # Store user (in production, hash the password!)
-        users[email] = {
-            'password': password,  # WARNING: Plain text for demo only!
-            'address': address,
-            'mobile_number': mobile_number,
-            'created_at': time.time()
-        }
-
-        logger.info(f"New user registered: {email}")
-        return jsonify({'message': 'Registration successful'}), 201
-
-    except Exception as e:
-        logger.error(f"Registration error: {str(e)}")
-        return jsonify({'error': 'Registration failed'}), 500
-
-@app.route('/api/login', methods=['POST'])
+@app.route("/login", methods=["POST", "OPTIONS"])
 def login():
-    """User login endpoint"""
+    if request.method == "OPTIONS":
+        return {}, 200
+    
+    print(f"[LOGIN] Request from {request.remote_addr}")
     try:
-        data = request.form
-        email = data.get('email', '').strip()
-        password = data.get('password', '')
+        data = request.get_json(force=True)
+        username = data.get("username", "").strip()
+        password = data.get("password", "")
+        if not username or not password:
+            return jsonify({"error": "Username and password are required."}), 400
+        user = User.query.filter_by(username=username).first()
+        if not user or not verify_password(password, user.password_hash):
+            print(f"[LOGIN] Invalid credentials for user {username}")
+            return jsonify({"error": "Invalid credentials."}), 401
+        token = create_token(user.id)
+        print(f"[LOGIN] User {username} logged in successfully")
+        return jsonify({"token": token, "username": username}), 200
+    except Exception as exc:
+        print(f"[LOGIN ERROR] {str(exc)}")
+        app.logger.error(f"Login error: {str(exc)}")
+        return jsonify({"error": "Login failed"}), 500
 
-        # Validation
-        if not email or not password:
-            return jsonify({'error': 'Email and password are required'}), 400
 
-        # Check user exists and password matches
-        if email not in users or users[email]['password'] != password:
-            return jsonify({'error': 'Invalid email or password'}), 401
-
-        # Set session
-        session['user'] = {
-            'email': email,
-            'address': users[email]['address'],
-            'mobile_number': users[email]['mobile_number']
-        }
-
-        logger.info(f"User logged in: {email}")
-        return jsonify({
-            'message': 'Login successful',
-            'user': session['user']
-        }), 200
-
-    except Exception as e:
-        logger.error(f"Login error: {str(e)}")
-        return jsonify({'error': 'Login failed'}), 500
-
-@app.route('/api/logout', methods=['POST'])
-def logout():
-    """User logout endpoint"""
-    session.pop('user', None)
-    return jsonify({'message': 'Logout successful'}), 200
-
-@app.route('/api/check-auth', methods=['GET'])
-def check_auth():
-    """Check authentication status"""
-    if 'user' in session:
-        return jsonify({
-            'authenticated': True,
-            'user': session['user']
-        }), 200
-    else:
-        return jsonify({
-            'authenticated': False
-        }), 200
-
-@app.route('/predict', methods=['POST'])
-def predict():
-    """Main prediction endpoint"""
-    start_time = time.time()
-
+@app.route("/predict", methods=["POST"])
+@token_required
+def predict(current_user):
+    if "image" not in request.files:
+        return jsonify({"error": "Image file is required."}), 400
+    image_file = request.files["image"]
+    if image_file.filename == "":
+        return jsonify({"error": "No image selected."}), 400
     try:
-        # Check if file is present
-        if 'file' not in request.files:
-            return jsonify({
-                'status': 'error',
-                'message': 'No file uploaded'
-            }), 400
-
-        file = request.files['file']
-
-        # Check if file has a name
-        if file.filename == '':
-            return jsonify({
-                'status': 'error',
-                'message': 'No file selected'
-            }), 400
-
-        # Check file extension
-        if not allowed_file(file.filename):
-            return jsonify({
-                'status': 'error',
-                'message': 'Invalid file format. Allowed: png, jpg, jpeg, gif, bmp'
-            }), 400
-
-        # Secure filename and save
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
-
-        logger.info(f"Processing image: {filename}")
-
-        # Preprocess image
-        image_tensor = preprocess_image(filepath)
-
-        # Step 1: Check if image is relevant using MobileNet
-        is_relevant, irrelevant_confidence = predict_irrelevant(image_tensor)
-
-        if not is_relevant:
-            cleanup_file(filepath)
-            processing_time = time.time() - start_time
-            logger.info(".2f")
-            return jsonify({
-                'status': 'rejected',
-                'message': 'Uploaded image is not a valid plant',
-                'confidence': round(irrelevant_confidence * 100, 2),
-                'processing_time': round(processing_time, 2)
-            })
-
-        # Step 2: If relevant, classify plant using DenseNet
-        plant_name, confidence, top_predictions = predict_plant(image_tensor, top_k=3)
-
-        # Cleanup uploaded file
-        cleanup_file(filepath)
-
-        processing_time = time.time() - start_time
-        logger.info(".2f")
-
+        image_data = preprocess_image(image_file.stream)
+        predictions = model.predict(image_data)
+        best_idx = int(np.argmax(predictions[0]))
+        plant_name = PLANT_CLASSES[best_idx]
+        confidence = float(predictions[0][best_idx])
+        tips = PLANT_TIPS.get(plant_name, [])
+        record = Prediction(
+            user_id=current_user.id,
+            plant=plant_name,
+            confidence=confidence,
+            tips=json.dumps(tips),
+        )
+        db.session.add(record)
+        db.session.commit()
         return jsonify({
-            'status': 'success',
-            'prediction': plant_name,
-            'confidence': confidence,
-            'top_predictions': top_predictions,
-            'processing_time': round(processing_time, 2)
+            "plant": plant_name,
+            "confidence": round(confidence, 4),
+            "tips": tips,
         })
+    except Exception as exc:
+        return jsonify({"error": f"Prediction failed: {str(exc)}"}), 500
 
-    except Exception as e:
-        logger.error(f"Prediction error: {str(e)}")
-        # Cleanup file in case of error
-        if 'filepath' in locals() and os.path.exists(filepath):
-            cleanup_file(filepath)
 
-        return jsonify({
-            'status': 'error',
-            'message': f'Prediction failed: {str(e)}'
-        }), 500
+@app.route("/predictions", methods=["GET"])
+@token_required
+def user_predictions(current_user):
+    entries = (
+        Prediction.query.filter_by(user_id=current_user.id)
+        .order_by(Prediction.created_at.desc())
+        .limit(20)
+        .all()
+    )
+    return jsonify(
+        [
+            {
+                "id": entry.id,
+                "plant": entry.plant,
+                "confidence": round(entry.confidence, 4),
+                "tips": json.loads(entry.tips),
+                "createdAt": entry.created_at.isoformat(),
+            }
+            for entry in entries
+        ]
+    )
 
-@app.errorhandler(413)
-def too_large(e):
-    """Handle file too large error"""
-    return jsonify({
-        'status': 'error',
-        'message': 'File too large. Maximum size is 16MB'
-    }), 413
 
-@app.errorhandler(500)
-def internal_error(e):
-    """Handle internal server errors"""
-    logger.error(f"Internal server error: {str(e)}")
-    return jsonify({
-        'status': 'error',
-        'message': 'Internal server error'
-    }), 500
-
-if __name__ == '__main__':
-    # Load models at startup
-    logger.info("Starting HerbVision API server...")
-    load_models()
-    logger.info("Models loaded successfully")
-
-    # Create uploads directory if it doesn't exist
-    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-
-    # Start server
-    app.run(host='0.0.0.0', port=5000, debug=False)
+if __name__ == "__main__":
+    with app.app_context():
+        db.create_all()
+        load_or_create_model()
+    app.run(host="0.0.0.0", port=5000, debug=True)
