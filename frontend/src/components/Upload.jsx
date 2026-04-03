@@ -41,7 +41,7 @@ function Upload({ isAuthenticated }) {
     formData.append('file', selectedFile);
 
     try {
-      const response = await fetch('/api/upload', {
+      const response = await fetch('/predict', {
         method: 'POST',
         body: formData,
         credentials: 'include'
@@ -52,7 +52,7 @@ function Upload({ isAuthenticated }) {
       if (response.ok) {
         setResult(data);
       } else {
-        setError(data.error);
+        setError(data.message || 'Upload failed');
       }
     } catch (error) {
       setError('Network error. Please try again.');
@@ -104,29 +104,45 @@ function Upload({ isAuthenticated }) {
         {result && (
           <div className="result-container">
             <h3>Analysis Result</h3>
-            {result.image && (
-              <div className="result-image">
-                <img
-                  src={`/upload/${result.image}`}
-                  alt="Analyzed plant"
-                />
+            {result.status === 'success' && (
+              <div className="result-details">
+                <h4>Plant Identified: {result.prediction}</h4>
+                <div className="result-section">
+                  <h5>Confidence: {result.confidence}%</h5>
+                </div>
+                {result.top_predictions && result.top_predictions.length > 0 && (
+                  <div className="result-section">
+                    <h5>Top Predictions:</h5>
+                    <ul>
+                      {result.top_predictions.map((pred, index) => (
+                        <li key={index}>
+                          {pred.name}: {pred.confidence}%
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <div className="result-section">
+                  <h5>Processing Time: {result.processing_time}s</h5>
+                </div>
               </div>
             )}
-            <div className="result-details">
-              <h4>Plant: {result.prediction}</h4>
-              {result.description && (
+            {result.status === 'rejected' && (
+              <div className="result-details">
+                <h4>Result: {result.message}</h4>
                 <div className="result-section">
-                  <h5>Description:</h5>
-                  <p>{result.description}</p>
+                  <h5>Confidence: {result.confidence}%</h5>
                 </div>
-              )}
-              {result.uses && (
                 <div className="result-section">
-                  <h5>Medicinal Uses:</h5>
-                  <p>{result.uses}</p>
+                  <h5>Processing Time: {result.processing_time}s</h5>
                 </div>
-              )}
-            </div>
+              </div>
+            )}
+            {result.status === 'error' && (
+              <div className="error-message">
+                Error: {result.message}
+              </div>
+            )}
           </div>
         )}
       </div>

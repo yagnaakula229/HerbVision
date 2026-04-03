@@ -1,23 +1,166 @@
-# Medicinal Plant Image Classifier - Flask REST API Backend
+# HerbVision - Flask REST API Backend
 
-This is a Flask REST API for classifying medicinal plant images using PyTorch models with MySQL database.
+A production-ready Flask REST API for dual-model image classification of medicinal plants using PyTorch.
 
 ## Features
 
-- User registration and login (session-based)
-- Image upload and classification
-- Relevance check (medicinal plant or not)
-- CORS enabled for React frontend
-- JSON API responses
+- **Dual-Model Pipeline**: MobileNet for irrelevant image filtering + DenseNet121 for plant classification
+- **Health Check Endpoint**: `/` - API status monitoring
+- **Prediction Endpoint**: `POST /predict` - Image classification with confidence scores
+- **Production Standards**: Proper error handling, logging, file cleanup, CORS support
+- **Security**: File type validation, size limits, secure filename handling
 
 ## API Endpoints
 
+### Health Check
+- `GET /` - Check API status
+  - Response: `{"status": "healthy", "message": "HerbVision API is running", "timestamp": 1234567890.123}`
+
 ### Authentication
 - `POST /api/register` - Register new user
+  - Content-Type: `application/x-www-form-urlencoded`
   - Required: `email`, `password`, `confirm_password`, `address`, `mobile_number`
-  
+  - Response: `{"message": "Registration successful"}`
+
 - `POST /api/login` - Login user
+  - Content-Type: `application/x-www-form-urlencoded`
   - Required: `email`, `password`
+  - Response: `{"message": "Login successful", "user": {...}}`
+
+- `POST /api/logout` - Logout user
+  - Response: `{"message": "Logout successful"}`
+
+### Image Classification
+- `POST /predict` - Classify uploaded plant image
+  - Content-Type: `multipart/form-data`
+  - Parameter: `file` (image file)
+  - Supported formats: PNG, JPG, JPEG, GIF, BMP
+  - Max file size: 16MB
+
+#### Success Response (Plant Detected):
+```json
+{
+  "status": "success",
+  "prediction": "Aloe Vera",
+  "confidence": 87.5,
+  "top_predictions": [
+    {"name": "Aloe Vera", "confidence": 87.5},
+    {"name": "Snake Plant", "confidence": 12.3},
+    {"name": "ZZ Plant", "confidence": 0.2}
+  ],
+  "processing_time": 1.23
+}
+```
+
+#### Rejection Response (Irrelevant Image):
+```json
+{
+  "status": "rejected",
+  "message": "Uploaded image is not a valid plant",
+  "confidence": 95.2,
+  "processing_time": 0.89
+}
+```
+
+#### Error Response:
+```json
+{
+  "status": "error",
+  "message": "Prediction failed: [error details]"
+}
+```
+
+## Installation
+
+1. **Install Dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+2. **Model Files**:
+   Place the following model files in the `models/` directory:
+   - `mobilenet_irrelevant.pth` - MobileNet model for irrelevant image detection
+   - `densenet_model.pth` - DenseNet121 model for plant classification
+
+3. **Run the Server**:
+   ```bash
+   python app.py
+   ```
+
+   The API will be available at `http://localhost:5000`
+
+## Project Structure
+
+```
+backend/
+├── app.py              # Main Flask application
+├── utils.py            # Model loading and prediction utilities
+├── requirements.txt    # Python dependencies
+├── models/             # PyTorch model files
+│   ├── mobilenet_irrelevant.pth
+│   └── densenet_model.pth
+├── uploads/            # Temporary uploaded files (auto-created)
+└── README.md           # This file
+```
+
+## Architecture
+
+### Model Pipeline
+1. **Preprocessing**: Images are resized to 224x224 and normalized
+2. **Relevance Check**: MobileNet determines if image contains a plant
+3. **Classification**: If relevant, DenseNet121 classifies the plant species
+4. **Response**: JSON response with prediction results and confidence scores
+
+### Error Handling
+- File validation (type, size)
+- Model loading errors
+- Prediction failures
+- Automatic file cleanup
+
+### Security Features
+- File extension validation
+- Secure filename handling
+- File size limits (16MB)
+- CORS enabled for frontend integration
+
+## Dependencies
+
+- Flask 2.3.3 - Web framework
+- Flask-CORS 4.0.0 - CORS support
+- Flask-Session 0.5.0 - Session management
+- PyTorch 2.4.1 - Deep learning framework
+- Torchvision 0.19.1 - Computer vision utilities
+- Pillow 10.0.0 - Image processing
+- Werkzeug 2.3.7 - WSGI utilities
+
+## Development
+
+### Testing the API
+
+```bash
+# Health check
+curl http://localhost:5000/
+
+# Prediction (replace with actual image file)
+curl -X POST -F "file=@plant_image.jpg" http://localhost:5000/predict
+```
+
+### Logs
+The application uses Python's logging module. Logs include:
+- Model loading status
+- Prediction requests and results
+- Error details
+- Processing times
+
+## Production Deployment
+
+For production deployment, consider:
+- Using a WSGI server (Gunicorn, uWSGI)
+- Setting `app.config['DEBUG'] = False`
+- Using environment variables for configuration
+- Implementing proper authentication/authorization
+- Adding rate limiting
+- Using a reverse proxy (nginx)
   
 - `POST /api/logout` - Logout user
   
