@@ -112,21 +112,50 @@ function Upload({ isAuthenticated }) {
                 />
               </div>
             )}
-            <div className="result-details">
-              <h4>Plant: {result.prediction}</h4>
-              {result.description && (
-                <div className="result-section">
-                  <h5>Description:</h5>
-                  <p>{result.description}</p>
+            
+            {/* Display top 3 predictions with confidence scores */}
+            {result.predictions && result.predictions.length > 0 && (
+              <div className="predictions-section">
+                <h5>Top 3 Predictions:</h5>
+                <div className="predictions-list">
+                  {result.predictions.map((pred, index) => (
+                    <div key={index} className="prediction-item">
+                      <span className="rank">#{index + 1}</span>
+                      <span className="plant-name">{pred.plant}</span>
+                      <span className="confidence">
+                        {(pred.confidence * 100).toFixed(2)}%
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              )}
-              {result.uses && (
-                <div className="result-section">
-                  <h5>Medicinal Uses:</h5>
-                  <p>{result.uses}</p>
-                </div>
-              )}
-            </div>
+              </div>
+            )}
+
+            {/* Display main prediction details */}
+            {result.main_prediction && (
+              <div className="result-details">
+                <h4>Primary Result: {result.main_prediction.plant}</h4>
+                {result.main_prediction.description && (
+                  <div className="result-section">
+                    <h5>Description:</h5>
+                    <p>{result.main_prediction.description}</p>
+                  </div>
+                )}
+                {result.main_prediction.uses && (
+                  <div className="result-section">
+                    <h5>Medicinal Uses:</h5>
+                    <p>{result.main_prediction.uses}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Fallback for old format (in case non-medicinal plant) */}
+            {!result.predictions && result.prediction && (
+              <div className="result-details">
+                <h4>Result: {result.prediction}</h4>
+              </div>
+            )}
           </div>
         )}
       </div>
