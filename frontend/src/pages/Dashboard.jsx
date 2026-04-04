@@ -5,7 +5,7 @@ import ImageUpload from "../components/ImageUpload";
 import ResultCard from "../components/ResultCard";
 
 function Dashboard() {
-  const [result, setResult] = useState(null);
+  const [predictions, setPredictions] = useState([]);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -26,7 +26,7 @@ function Dashboard() {
   const handlePredict = async (file) => {
     setLoading(true);
     setError("");
-    setResult(null);
+    setPredictions([]);
     const formData = new FormData();
     formData.append("image", file);
 
@@ -34,10 +34,11 @@ function Dashboard() {
       const response = await api.post("/predict", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      setResult(response.data);
+      setPredictions(Array.isArray(response.data) ? response.data : [response.data]);
       await fetchHistory();
     } catch (err) {
-      setError(err.response?.data?.error || "Prediction failed. Please try another image.");
+      console.error(err);
+      setError("Something went wrong. Try again.");
     } finally {
       setLoading(false);
     }
@@ -58,7 +59,7 @@ function Dashboard() {
           <ImageUpload onSubmit={handlePredict} loading={loading} error={error} />
         </div>
 
-        {result && <ResultCard result={result} />}
+        {predictions.length > 0 && <ResultCard predictions={predictions} />}
 
         <section className="card">
           <h2 className="section-heading">Prediction History</h2>

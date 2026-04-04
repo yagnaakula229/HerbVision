@@ -3,8 +3,10 @@ import { useState } from "react";
 function ImageUpload({ onSubmit, loading, error }) {
   const [selectedFile, setSelectedFile] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [localError, setLocalError] = useState("");
 
   const handleFileChange = (event) => {
+    setLocalError("");
     const file = event.target.files[0];
     if (!file) {
       setSelectedFile(null);
@@ -14,6 +16,7 @@ function ImageUpload({ onSubmit, loading, error }) {
     if (!file.type.startsWith("image/")) {
       setSelectedFile(null);
       setPreview(null);
+      setLocalError("Please select a valid image file.");
       return;
     }
     setSelectedFile(file);
@@ -23,8 +26,10 @@ function ImageUpload({ onSubmit, loading, error }) {
   const handleSubmit = (event) => {
     event.preventDefault();
     if (!selectedFile) {
+      setLocalError("Please choose an image before submitting.");
       return;
     }
+    setLocalError("");
     onSubmit(selectedFile);
   };
 
@@ -32,17 +37,26 @@ function ImageUpload({ onSubmit, loading, error }) {
     <div className="card upload-card">
       <h2>Upload a plant image</h2>
       <form onSubmit={handleSubmit}>
-        <input type="file" accept="image/*" onChange={handleFileChange} />
+        <input type="file" accept="image/*" onChange={handleFileChange} disabled={loading} />
         {preview && (
           <div className="preview-wrapper">
             <img className="preview-image" src={preview} alt="Upload preview" />
           </div>
         )}
         <button className="button button-primary" type="submit" disabled={loading || !selectedFile}>
-          {loading ? "Predicting..." : "Predict Plant"}
+          {loading ? (
+            <>
+              <span className="spinner" />
+              Analyzing plant...
+            </>
+          ) : (
+            "Predict Plant"
+          )}
         </button>
       </form>
-      {error && <div className="error-message">{error}</div>}
+      {(error || localError) && (
+        <div className="error-message">{localError || error}</div>
+      )}
     </div>
   );
 }

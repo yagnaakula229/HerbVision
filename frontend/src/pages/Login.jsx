@@ -19,11 +19,7 @@ function Login() {
       localStorage.setItem("username", username);
       navigate("/dashboard");
     } catch (err) {
-      console.error("Login error:", err);
-      const errorMsg = err.response?.data?.error || 
-        err.message || 
-        "Unable to login. Please try again.";
-      setError(errorMsg);
+      setError(err.response?.data?.error || "Unable to login. Please try again.");
     } finally {
       setLoading(false);
     }
