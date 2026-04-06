@@ -1,7 +1,5 @@
 Flask==2.3.3
-Flask-CORS==4.0.0
-torch==2.4.1
-torchvision==0.19.1
-Pillow==10.0.0
-Werkzeug==2.3.7
-gunicorn
+Flask-Cors==4.0.0
+numpy==1.26.4
+Pillow>=10.3.0
+gunicorn==21.2.0
