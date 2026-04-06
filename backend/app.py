@@ -88,7 +88,7 @@ class DenseNetPlantClassifier(nn.Module):
 # Load the model
 num_classes = 40  # Adjust according to your number of classes
 model = DenseNetPlantClassifier(num_classes=num_classes)
-checkpoint = torch.load('densenet121_pso_medicinal_plants.pth', map_location=device)
+checkpoint = torch.load('gitdensenet121_pso_medicinal_plants.pth', map_location=device)
 # Extract the model state dict if it's wrapped in a checkpoint
 if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
     model.load_state_dict(checkpoint['model_state_dict'], strict=False)
