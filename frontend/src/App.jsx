@@ -9,7 +9,7 @@ import About from './components/About';
 import './App.css';
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(null);
   const [user, setUser] = useState(null);
 
   useEffect(() => {
@@ -25,9 +25,14 @@ function App() {
       if (data.authenticated) {
         setIsAuthenticated(true);
         setUser(data.user);
+      } else {
+        setIsAuthenticated(false);
+        setUser(null);
       }
     } catch (error) {
       console.error('Auth check failed:', error);
+      setIsAuthenticated(false);
+      setUser(null);
     }
   };
 

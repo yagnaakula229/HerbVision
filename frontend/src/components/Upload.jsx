@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Upload.css';
 
@@ -10,10 +10,32 @@ function Upload({ isAuthenticated }) {
   const [error, setError] = useState('');
   const navigate = useNavigate();
 
-  // Redirect if not authenticated
-  if (!isAuthenticated) {
-    navigate('/login');
-    return null;
+  useEffect(() => {
+    if (isAuthenticated === false) {
+      navigate('/login');
+    }
+  }, [isAuthenticated, navigate]);
+
+  if (isAuthenticated === null) {
+    return (
+      <div className="upload-container">
+        <div className="upload-content">
+          <h2>Checking authentication...</h2>
+          <p>Please wait while we verify your login status.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isAuthenticated === false) {
+    return (
+      <div className="upload-container">
+        <div className="upload-content">
+          <h2>Login required</h2>
+          <p>You must be logged in to access the upload page. Redirecting...</p>
+        </div>
+      </div>
+    );
   }
 
   const handleFileSelect = (e) => {
@@ -123,7 +145,7 @@ function Upload({ isAuthenticated }) {
                       <span className="rank">#{index + 1}</span>
                       <span className="plant-name">{pred.plant}</span>
                       <span className="confidence">
-                        {(pred.confidence * 100).toFixed(2)}%
+                        {pred.confidence.toFixed(2)}%
                       </span>
                     </div>
                   ))}
